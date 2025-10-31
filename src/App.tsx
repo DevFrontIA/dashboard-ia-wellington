@@ -18,28 +18,32 @@ export default function App() {
     setMessages(prev => [...prev, loadingMessage])
 
     try {
-      const apiKey = import.meta.env.VITE_GROK_API_KEY
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY
       if (!apiKey) {
-        throw new Error('Chave API não encontrada! Verifique VITE_GROK_API_KEY no Netlify.')
+        throw new Error('Chave API não encontrada! Verifique VITE_GEMINI_API_KEY no Netlify.')
       }
 
-      const apiMessages = [
-        { role: 'system' as const, content: 'Você é Grok, um assistente IA útil, engraçado e criado pela xAI. Responda em português.' },
-        ...messages.map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content })).slice(0, -1),
-        userMessage
+      // Formata mensagens pro Gemini: system + histórico + user atual
+      const systemContent = 'Você é um assistente IA útil e engraçado criado pelo Google. Responda em português.'
+      const contents = [
+        { role: 'user' as const, parts: [{ text: systemContent }] }, // System como primeiro "user" pro Gemini
+        ...messages.map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'model' as const,
+          parts: [{ text: msg.content }]
+        })).slice(0, -1), // Histórico sem loading
+        { role: 'user' as const, parts: [{ text: userMessage.content }] }
       ]
 
-      const response = await fetch('https://api.x.ai/v1/chat/completions', {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: apiMessages,
-          model: 'grok-beta',
-          stream: false,
-          temperature: 0.7,
+          contents: contents,
+          generationConfig: {
+            temperature: 0.7,
+          },
         }),
       })
 
@@ -49,13 +53,13 @@ export default function App() {
       }
 
       const data = await response.json()
-      const aiContent = data.choices[0]?.message?.content || 'Resposta vazia da API. Tente novamente.'
+      const aiContent = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Resposta vazia da API. Tente novamente.'
 
       setMessages(prev => [...prev.slice(0, -1), { role: 'assistant' as const, content: aiContent }])
     } catch (error: unknown) {
       console.error('Erro completo:', error)
       const message = error instanceof Error ? error.message : 'Erro desconhecido'
-      const errorMessage = { role: 'assistant' as const, content: `Ops! Erro: ${message}. Verifique a chave API ou quota no x.ai/api.` }
+      const errorMessage = { role: 'assistant' as const, content: `Ops! Erro: ${message}. Verifique a chave API ou quota no aistudio.google.com.` }
       setMessages(prev => [...prev.slice(0, -1), errorMessage])
     }
   }
@@ -100,4 +104,4 @@ export default function App() {
       </div>
     </div>
   )
-  }
+}
